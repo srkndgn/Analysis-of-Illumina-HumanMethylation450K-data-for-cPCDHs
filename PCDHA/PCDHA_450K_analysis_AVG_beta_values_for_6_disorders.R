@@ -1,0 +1,154 @@
+library("ChAMP")
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(IlluminaHumanMethylation450kmanifest)
+library(minfi)
+library(ggplot2)
+library(devtools)
+library(DNAmArray)
+library(ChIPseeker)
+library(dplyr)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(dplyr)
+library(Gviz)
+library(GenomicRanges)
+library(ComplexHeatmap)
+
+###############################################################################
+data(Locations)
+positions=data.frame(row.names=Locations@rownames,
+                     chr=Locations@listData$chr,
+                     start=Locations@listData$pos,
+                     end=Locations@listData$pos+1,
+                     strand=Locations@listData$strand)
+
+
+positions.gr=makeGRangesFromDataFrame(positions)
+
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+positions.annot=annotatePeak(positions.gr,tssRegion=c(-2500, 2500),
+                             TxDb=txdb, annoDb="org.Hs.eg.db")
+positions.annot.df=as.data.frame(positions.annot,row.names=positions.annot@anno@ranges@NAMES)
+
+#select pcdha and promoter
+PD <- positions.annot.df[grep("PCDHA", positions.annot.df$SYMBOL), ]
+PD2 <- PD[,c('annotation', 'SYMBOL', 'start', 'end')]
+PD2 <- PD2[grep("Promoter", PD$annotation), ]
+PD2_unique <- distinct(PD2, SYMBOL, .keep_all= TRUE)
+
+#combine individual beta values (beta) with pd2, from UCSC script
+combo <- merge(PD2, mybeta, by = 0)
+
+###################################################################################################################
+#make average beta value for each pcdha gene promoter
+sorted_combo <- combo[order(combo$SYMBOL),]
+
+
+
+j <- 1
+average_table <- data.frame("1","2","3","4","5","6","7","8","9","10","11","12","13","14","15")
+
+for (i in 1:nrow(sorted_combo)){
+  s <- sorted_combo[i,3]
+  print(s)
+  x <- grep(s,sorted_combo$SYMBOL) 
+  print(x)
+  average <- c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+  for (k in x){
+    for (m in 6:15){
+      average[m]=average[m]+sorted_combo[k,m]
+    }
+  }
+  average = average/length(x)
+  average[3] = s
+  average_table[j,]=average
+  j = j + 1
+}
+
+average_table <- unique(average_table)
+average_table <- average_table[,-c(1,2,4,5)]
+
+names(average_table)[names(average_table) == 'X.3.'] <- 'SYMBOL' #rename column
+data <- merge(PD2_unique,average_table, by = "SYMBOL")
+names(data)[names(data) == 'X.6.'] <- 'SOTOS' #rename column
+names(data)[names(data) == 'X.7.'] <- 'ICF1' #rename column
+names(data)[names(data) == 'X.8.'] <- 'ICF2' #rename column
+names(data)[names(data) == 'X.9.'] <- 'ICF3' #rename column
+names(data)[names(data) == 'X.10.'] <- 'ICF4' #rename column
+names(data)[names(data) == 'X.11.'] <- 'DUPLICATION7q' #rename column
+names(data)[names(data) == 'X.12.'] <- 'CHARGE' #rename column
+names(data)[names(data) == 'X.13.'] <- 'KABUKI' #rename column
+names(data)[names(data) == 'X.14.'] <- 'chr16DEL' #rename column
+names(data)[names(data) == 'X.15.'] <- 'CONTROL' #rename column
+
+write.table(average_table, "averagetable.txt",
+            row.names = TRUE, sep = "\t")
+
+
+##################################
+
+
+##########
+#hg19
+genome <- "hg19"
+chrom <- "chr"
+from <- 140153729
+to <- 140353141
+
+axTrack <- GenomeAxisTrack()
+idxTrack <- IdeogramTrack(genome = "hg19", chromosome = "chr5")
+#plotTracks(list(idxTrack, axTrack, knownGenes), from = from, to = to, showTitle = FALSE)
+
+refGenes <- UcscTrack(genome = "hg19", chromosome = "chr5",
+                      track = "xenoRefGene", from = from, to = to,
+                      trackType = "GeneRegionTrack", rstarts = "exonStarts",
+                      rends = "exonEnds", gene = "name", symbol = "name2",
+                      transcript = "name", strand = "strand", fill = "#8282d2",
+                      stacking = "dense", name = "PCDHA", background.panel = "white",
+                      background.title = "black")
+
+plotTracks(refGenes)
+
+
+knownGenes <- UcscTrack(genome = "hg19", chromosome = "chr5",
+                        track = "knownGene", from = from, to = to,
+                        trackType = "GeneRegionTrack",
+                        rstarts = "exonStarts", rends = "exonEnds",
+                        gene = "name", symbol = "name",
+                        transcript = "name", strand = "strand",
+                        fill = "black", name = "UCSC Genes", background.panel = "white",
+                        background.title = "black")
+plotTracks(knownGenes)
+
+cpgIslands <- UcscTrack(genome = "hg19", chromosome = "chr5", 
+                        track = "cpgIslandExt", from = from, to = to,
+                        trackType = "AnnotationTrack", 
+                        start = "chromStart", end = "chromEnd", 
+                        id = "name", shape = "box", fill = "black",
+                        name = "CpG Islands", background.panel = "white",
+                        background.title = "black",)
+plotTracks(cpgIslands)
+## make data track
+
+
+dTrack <- DataTrack(data, chromosome = "chr5", genome = "hg19", name = "<<  M E T H Y L A T I O N  L E V E L  ( 0 - 1 beta-value )  >>", background.panel = "white",
+                    background.title = "black", groups = rep(c("01-SOTOS", "02-ICF1", "03-ICF2", "04-ICF3", "05-ICF4", "06-DUPLICATION7q", "07-CHARGE", "08-KABUKI", "09-chr16DEL", "10-CONTROL"
+)), type = "boxplot", type = c("a", "p"), ylim = c(0, 0.8), col=c("red", "black", "magenta", "coral", "brown", "skyblue", "purple", "blue", "#b8860b", "green"))
+
+plotTracks(list(idxTrack, axTrack, refGenes, cpgIslands, dTrack), sizes=c(3,3,4,4,30), from = from, to = to, showTitle = TRUE)
+
+plotTracks(list(idxTrack, axTrack, cpgIslands, dTrack), from = from, to = to, showTitle = TRUE)
+
+write.table(data, "data.txt",
+            row.names = TRUE, sep = "\t")
+#########################
+
+
+###### making heatmaps with beta values##################
+PD <- positions.annot.df[grep("PCDHA", positions.annot.df$SYMBOL), ]
+combo <- merge(PD, mybeta, by = 0)
+
+#select the beta values, patient groups + cpgs, and gene name from df
+combo2 <- sorted_combo[,c("SOTOS", "ICF1", "ICF2", "ICF3", "ICF4", "DUPLI", "CHARGE", "KABUKI", "chr16DEL", "CONTROL"
+)]
+combo2_matrix <- data.matrix(combo2)
+Heatmap(combo2_matrix, name = "beta", column_title = "Heatmap according to 124 CpGs located in the promoter regions(2500-TSS+2500) of PCDHAs", show_row_names = FALSE)
