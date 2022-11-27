@@ -6,3 +6,5 @@ This repository contains 450K illumina human methylation data from the patients 
 
 Each folder is ready to run R script to initiate 450K analysis for the promoter regions of cPCDHs.
 
+Do not forget to install necassary libaries!!
+
